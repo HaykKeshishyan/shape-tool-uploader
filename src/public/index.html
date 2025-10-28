@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVG Icon Processor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎨 SVG Icon Processor</h1>
+      <p>Upload SVG files and generate React constants with calculated dimensions</p>
+    </header>
+
+    <main>
+      <form id="uploadForm" enctype="multipart/form-data">
+        <div class="form-group">
+          <label for="categoryName">Category Name:</label>
+          <input 
+            type="text" 
+            id="categoryName" 
+            name="categoryName" 
+            placeholder="e.g., persons, military, icons"
+            required
+          >
+          <small>This will be used for the output filename (e.g., persons-svgs.jsx)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="svgFiles">Select SVG Files:</label>
+          <input 
+            type="file" 
+            id="svgFiles" 
+            name="svgFiles" 
+            accept=".svg,image/svg+xml"
+            multiple
+            required
+          >
+          <small id="fileCount">No files selected</small>
+        </div>
+
+        <button type="submit" id="submitBtn">
+          <span id="btnText">Generate File</span>
+          <span id="btnLoader" class="loader hidden"></span>
+        </button>
+      </form>
+
+      <div id="result" class="result hidden">
+        <h3>✅ Success!</h3>
+        <div class="result-info">
+          <p><strong>File generated:</strong> <span id="fileName"></span></p>
+          <p><strong>Icons processed:</strong> <span id="iconCount"></span></p>
+          <p><strong>Sizes calculated:</strong> <span id="sizeCount"></span></p>
+        </div>
+        <button id="downloadBtn" class="download-btn">Download File</button>
+        
+        <details class="preview">
+          <summary>Preview Generated Code</summary>
+          <div class="preview-header">
+            <button id="copyBtn" class="copy-btn" title="Copy to clipboard">
+              <span id="copyIcon">📋 Copy to Clipboard</span>
+              <span id="copiedIcon" class="hidden">✅ Copied!</span>
+            </button>
+          </div>
+          <pre id="previewCode"></pre>
+        </details>
+      </div>
+
+      <div id="error" class="error hidden">
+        <h3>❌ Error</h3>
+        <p id="errorMessage"></p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const svgFiles = document.getElementById('svgFiles');
+    const fileCount = document.getElementById('fileCount');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const btnLoader = document.getElementById('btnLoader');
+    const result = document.getElementById('result');
+    const error = document.getElementById('error');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let downloadUrl = '';
+
+    // Update file count
+    svgFiles.addEventListener('change', (e) => {
+      const count = e.target.files.length;
+      fileCount.textContent = `${count} file${count !== 1 ? 's' : ''} selected`;
+    });
+
+    // Handle form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData();
+      const categoryName = document.getElementById('categoryName').value;
+      const files = svgFiles.files;
+
+      if (files.length === 0) {
+        showError('Please select at least one SVG file');
+        return;
+      }
+
+      formData.append('categoryName', categoryName);
+      for (let i = 0; i < files.length; i++) {
+        formData.append('svgFiles', files[i]);
+      }
+
+      // Show loading state
+      submitBtn.disabled = true;
+      btnText.classList.add('hidden');
+      btnLoader.classList.remove('hidden');
+      result.classList.add('hidden');
+      error.classList.add('hidden');
+
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Upload failed');
+        }
+
+        // Show success
+        document.getElementById('fileName').textContent = data.fileName;
+        document.getElementById('iconCount').textContent = data.iconCount;
+        document.getElementById('sizeCount').textContent = data.sizeCount;
+        
+        // Store full code and show preview (truncated if too long)
+        const previewElement = document.getElementById('previewCode');
+        previewElement.setAttribute('data-full-code', data.preview);
+        previewElement.textContent = data.preview.substring(0, 2000) + 
+          (data.preview.length > 2000 ? '\n\n... (truncated for preview - click "Copy to Clipboard" for full code)' : '');
+        
+        downloadUrl = data.downloadUrl;
+        result.classList.remove('hidden');
+        
+        // Reset form
+        form.reset();
+        fileCount.textContent = 'No files selected';
+
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        // Reset button state
+        submitBtn.disabled = false;
+        btnText.classList.remove('hidden');
+        btnLoader.classList.add('hidden');
+      }
+    });
+
+    // Handle download
+    downloadBtn.addEventListener('click', () => {
+      if (downloadUrl) {
+        window.location.href = downloadUrl;
+      }
+    });
+
+    // Handle copy to clipboard
+    const copyBtn = document.getElementById('copyBtn');
+    const copyIcon = document.getElementById('copyIcon');
+    const copiedIcon = document.getElementById('copiedIcon');
+    const previewCode = document.getElementById('previewCode');
+    
+    copyBtn.addEventListener('click', async () => {
+      try {
+        // Get the full preview text (not the truncated version)
+        const fullCode = previewCode.getAttribute('data-full-code') || previewCode.textContent;
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(fullCode);
+        
+        // Show success feedback
+        copyIcon.classList.add('hidden');
+        copiedIcon.classList.remove('hidden');
+        
+        // Reset after 2 seconds
+        setTimeout(() => {
+          copyIcon.classList.remove('hidden');
+          copiedIcon.classList.add('hidden');
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please try again.');
+      }
+    });
+
+    function showError(message) {
+      document.getElementById('errorMessage').textContent = message;
+      error.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
+
