@@ -11,7 +11,13 @@ const PORT = process.env.PORT || 8080
 // Middleware
 app.use(cors())
 app.use(express.json())
-app.use(express.static(path.join(__dirname, 'public')))
+
+// Static files path - works in both development and production
+// In production (dist/server.js), we need to go up one level to find src/public
+const publicPath = path.join(__dirname, '..', 'src', 'public')
+app.use(express.static(publicPath))
+
+console.log(`📂 Serving static files from: ${publicPath}`)
 
 // Ensure output directory exists
 const outputDir = path.join(__dirname, '../output')
